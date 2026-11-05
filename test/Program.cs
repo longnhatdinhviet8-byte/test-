@@ -9,7 +9,15 @@ builder.Services.AddControllersWithViews();
 builder.Services.AddRazorPages();
 
 builder.Services.AddDbContext<QuanLyNhaHangContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+    var connStr = builder.Configuration.GetConnectionString("DefaultConnection") ?? "";
+    // Nếu chạy trên Linux (GitHub Codespaces / Docker), tự động dùng SQL Server container
+    if (OperatingSystem.IsLinux() && (connStr.Contains("SQLEXPRESS") || connStr.Contains("localhost\\")))
+    {
+        connStr = "Server=127.0.0.1,1433;Database=QuanLyNhaHang;User Id=sa;Password=Password123!;TrustServerCertificate=True;";
+    }
+    options.UseSqlServer(connStr);
+});
 
 // Đăng nhập bằng cookie: chưa đăng nhập thì chuyển tới /Account/Login
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -43,17 +51,17 @@ builder.Services.AddSession(options =>
 
 var app = builder.Build();
 
-// Mã hóa các mật khẩu nhân viên còn ở dạng chữ thường (chạy được nhiều lần, không sao)
+// Khởi tạo cơ sở dữ liệu và dữ liệu mẫu nếu chưa có
 using (var scope = app.Services.CreateScope())
 {
     try
     {
         var db = scope.ServiceProvider.GetRequiredService<QuanLyNhaHangContext>();
-        KhoiTaoDuLieu.MaHoaMatKhauCu(db);
+        KhoiTaoDuLieu.KhoiTao(db);
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning(ex, "Không mã hóa được mật khẩu nhân viên lúc khởi động");
+        app.Logger.LogWarning(ex, "Không khởi tạo được dữ liệu lúc khởi động: {Message}", ex.Message);
     }
 }
 
