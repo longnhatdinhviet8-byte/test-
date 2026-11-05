@@ -1,0 +1,14 @@
+@{
+    // Các trang của nhân viên / quản lý dùng khung có menu bên trái; trang khách dùng khung website thường
+    var tenController = ViewContext.RouteData.Values["controller"] as string ?? "";
+    var trangQuanTri = new[]
+    {
+        "QuanTri", "QuanLyHoaDon", "QuanLyDatBan", "QuanLyBan", "TonKho", "NhapKho",
+        "QuanLyThucDon", "QuanLyDanhMuc", "QuanLyCongThuc", "QuanLyNhanVien", "QuanLyKho",
+        "QuanLyNguyenLieu", "QuanLyCongViec", "QuanLyKhachHang", "ThongKe"
+    };
+
+    Layout = trangQuanTri.Contains(tenController, StringComparer.OrdinalIgnoreCase)
+        ? "~/Views/Shared/_LayoutQuanTri.cshtml"
+        : "~/Pages/Shared/_Layout.cshtml";
+}

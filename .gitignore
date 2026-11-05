@@ -1,0 +1,16 @@
+# Visual Studio and VS Code
+.vs/
+.vscode/
+
+# Build results
+**/bin/
+**/obj/
+
+# User-specific files
+**/*.user
+**/*.userosscache
+**/*.suo
+**/*.userprefs
+
+# Development settings
+**/appsettings.Development.json

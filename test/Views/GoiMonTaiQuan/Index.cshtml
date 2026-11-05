@@ -1,0 +1,150 @@
+﻿@model List<test.Models.Ban>
+@{
+    ViewData["Title"] = "Gọi món tại quán";
+    var laNhanVien = User.IsInRole("QuanLy") || User.IsInRole("NhanVien");
+    var thayDuocBan = (bool)ViewBag.ThayDuocBan;
+}
+
+<div class="page-header text-center">
+    <h1>📱 Gọi món tại quán</h1>
+    <p class="mb-0">Đang ngồi tại nhà hàng? Không cần đăng nhập: chọn bàn, quét mã QR rồi chọn món ngay trên điện thoại.</p>
+</div>
+
+<div class="row g-4 justify-content-center mb-4">
+    <div class="col-md-4"><div class="card card-food p-4 h-100 text-center"><div class="fs-1">1️⃣</div><h5>Chọn bàn của bạn</h5><p class="mb-0">Bấm vào số bàn bạn đang ngồi ở danh sách bên dưới.</p></div></div>
+    <div class="col-md-4"><div class="card card-food p-4 h-100 text-center"><div class="fs-1">2️⃣</div><h5>Quét mã QR</h5><p class="mb-0">Mở camera điện thoại và quét mã QR hiện ra để vào thực đơn của bàn.</p></div></div>
+    <div class="col-md-4"><div class="card card-food p-4 h-100 text-center"><div class="fs-1">3️⃣</div><h5>Chọn món &amp; gửi</h5><p class="mb-0">Thêm món vào giỏ rồi gửi. Món được ghi vào hóa đơn của bàn, dùng xong gọi nhân viên thanh toán.</p></div></div>
+</div>
+
+@if (thayDuocBan)
+{
+    <h4 class="section-title mb-3">Chọn bàn của bạn</h4>
+
+    @if (!Model.Any())
+    {
+        <p class="text-muted">Chưa có bàn nào để chọn. Nhờ nhân viên thêm bàn trong phần quản lý bàn.</p>
+    }
+    else
+    {
+        <div class="row g-4 align-items-start">
+            <div class="col-lg-7">
+                <div class="row g-2" id="danhSachBan">
+                    @foreach (var b in Model)
+                    {
+                        <div class="col-6 col-md-4">
+                            <button type="button" class="btn btn-outline-secondary w-100 py-3 btn-ban"
+                                    data-token="@b.MaQR" data-so-ban="@b.SoBan" data-cho="@b.SoChoNgoi">
+                                <span class="fw-bold fs-5">Bàn @b.SoBan</span><br />
+                                <small>@b.SoChoNgoi chỗ</small>
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="card card-food p-3 text-center" id="khungQR">
+                    <div id="chuaChon" class="text-muted py-4">
+                        <div class="fs-1">👈</div>
+                        Chọn một bàn để hiện mã QR gọi món.
+                    </div>
+                    <div id="daChon" style="display:none;">
+                        <h5 class="mb-2">Bàn <span id="tenBan"></span></h5>
+                        <div id="maQR" class="d-flex justify-content-center mb-2"></div>
+                        <p class="fw-semibold mb-2">Quét mã bằng camera điện thoại để chọn món</p>
+                        <a id="moTrucTiep" class="btn btn-restaurant w-100 mb-2" href="#">Hoặc gọi món ngay trên thiết bị này</a>
+                        <small class="text-muted text-break d-block" id="duongDan"></small>
+                    </div>
+                </div>
+
+                @if (laNhanVien)
+                {
+                    <div class="card card-food p-3 mt-3">
+                        <label for="gocUrl" class="form-label fw-bold mb-1">Địa chỉ website mà điện thoại của khách mở được</label>
+                        <input id="gocUrl" class="form-control" />
+                        <div class="form-text">
+                            Không dùng <code>localhost</code> vì điện thoại sẽ không vào được. Dùng địa chỉ IP trong mạng quán
+                            (vd <code>http://192.168.1.10:5011</code>) hoặc tên miền thật. Đổi ô này thì mã QR tự vẽ lại.
+                            Ô này dùng chung với trang in QR.
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+else
+{
+    <div class="alert alert-info text-center">
+        Hãy quét mã QR được dán trên bàn của bạn. Nếu không thấy mã, nhờ nhân viên hỗ trợ.
+    </div>
+}
+
+<p class="text-center mt-4">Muốn giữ bàn trước khi đến? <a asp-controller="DatBan" asp-action="Index">Đặt bàn trước (từ xa)</a></p>
+
+@if (laNhanVien)
+{
+    <div class="text-center mb-3">
+        <a asp-controller="QuanLyBan" asp-action="QR" class="btn btn-outline-secondary">🖨️ In QR tất cả bàn để dán lên bàn</a>
+    </div>
+}
+
+@section Scripts {
+    @if (thayDuocBan && Model.Any())
+    {
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+        <script>
+            (function () {
+                var nutBan = document.querySelectorAll('.btn-ban');
+                var oGoc = document.getElementById('gocUrl');   // chỉ nhân viên mới có ô này
+                var chuaChon = document.getElementById('chuaChon');
+                var daChon = document.getElementById('daChon');
+                var khungQR = document.getElementById('maQR');
+                var tokenDangChon = null;
+
+                // Địa chỉ gốc: ưu tiên địa chỉ nhân viên đã lưu (dùng chung với trang in QR), không có thì dùng địa chỉ trang đang mở
+                function layGoc() {
+                    var goc = location.origin;
+                    try {
+                        var luu = localStorage.getItem('goc-url-qr');
+                        if (luu) goc = luu;
+                    } catch (e) { }
+                    if (oGoc && oGoc.value.trim()) goc = oGoc.value.trim();
+                    return goc.replace(/\/+$/, '');
+                }
+
+                if (oGoc) {
+                    oGoc.value = layGoc();
+                    oGoc.addEventListener('input', function () {
+                        try { localStorage.setItem('goc-url-qr', oGoc.value.trim()); } catch (e) { }
+                        ve();
+                    });
+                }
+
+                function ve() {
+                    if (!tokenDangChon) return;
+                    var url = layGoc() + '/ban/' + tokenDangChon;
+                    khungQR.innerHTML = '';
+                    new QRCode(khungQR, { text: url, width: 220, height: 220, correctLevel: QRCode.CorrectLevel.M });
+                    document.getElementById('duongDan').textContent = url;
+                    // Nút "gọi món ngay" luôn dùng địa chỉ của trang đang mở, vì thiết bị này đang vào được website
+                    document.getElementById('moTrucTiep').href = '/ban/' + tokenDangChon;
+                }
+
+                nutBan.forEach(function (nut) {
+                    nut.addEventListener('click', function () {
+                        nutBan.forEach(function (n) { n.classList.remove('btn-restaurant'); n.classList.add('btn-outline-secondary'); });
+                        nut.classList.remove('btn-outline-secondary');
+                        nut.classList.add('btn-restaurant');
+
+                        tokenDangChon = nut.dataset.token;
+                        document.getElementById('tenBan').textContent = nut.dataset.soBan;
+                        chuaChon.style.display = 'none';
+                        daChon.style.display = 'block';
+                        ve();
+                    });
+                });
+            })();
+        </script>
+    }
+}

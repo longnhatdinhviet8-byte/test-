@@ -1,0 +1,298 @@
+﻿@model test.Models.HoaDonChiTietViewModel
+@inject Microsoft.Extensions.Configuration.IConfiguration Cau
+@{
+    var hd = Model.HoaDon;
+    ViewData["Title"] = "Hóa đơn #" + hd.MaHD;
+    var soDienThoai = Model.SDTKhach != null ? " (" + Model.SDTKhach + ")" : "";
+    var conLaiNguyen = decimal.Truncate(Model.ConLai);
+
+    // Tài khoản nhận tiền để tạo mã QR (khai báo trong appsettings.json, mục "ThanhToanQR")
+    var maNganHang = Cau["ThanhToanQR:MaNganHang"] ?? "";
+    var soTaiKhoan = Cau["ThanhToanQR:SoTaiKhoan"] ?? "";
+    var tenChuTK = Cau["ThanhToanQR:TenChuTaiKhoan"] ?? "";
+    var daCauHinhQR = maNganHang != "" && soTaiKhoan != "";
+}
+
+<div class="page-header">
+    <h2>🧾 Hóa đơn #@hd.MaHD</h2>
+    <p class="mb-0 text-muted">
+        Bàn @hd.Ban.SoBan · @(Model.TenKhach + soDienThoai)
+        · Lập lúc @hd.NgayLap.ToString("HH:mm dd/MM/yyyy")
+        @if (hd.DatBan != null)
+        {
+            <text> · Lịch đặt bàn @hd.DatBan.NgayGio.ToString("HH:mm dd/MM")</text>
+        }
+        @if (Model.TenNhanVien != null)
+        {
+            <text> · Thu ngân: @Model.TenNhanVien</text>
+        }
+    </p>
+</div>
+
+@if (TempData["ThongBao"] is string thongBao)
+{
+    <div class="alert alert-success">@thongBao</div>
+}
+@if (TempData["Loi"] is string loi)
+{
+    <div class="alert alert-danger">@loi</div>
+}
+
+<p>
+    Trạng thái:
+    @if (hd.TrangThai == test.Models.TrangThaiHoaDon.DaThanhToan)
+    {
+        <span class="badge bg-success">@hd.TrangThai</span>
+        @if (!string.IsNullOrEmpty(hd.PhuongThucTT))
+        {
+            <span class="text-muted"> (@hd.PhuongThucTT)</span>
+        }
+    }
+    else if (hd.TrangThai == test.Models.TrangThaiHoaDon.DaHuy)
+    {
+        <span class="badge bg-secondary">@hd.TrangThai</span>
+    }
+    else
+    {
+        <span class="badge bg-warning text-dark">@hd.TrangThai</span>
+    }
+</p>
+
+<h5 class="section-title mb-3">Các món đã gọi</h5>
+
+@if (!hd.ChiTietHoaDons.Any())
+{
+    <p class="text-muted">Hóa đơn chưa có món nào.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th>Món</th>
+                    <th class="text-end">Đơn giá</th>
+                    <th style="width:260px">Số lượng</th>
+                    <th class="text-end">Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in hd.ChiTietHoaDons.OrderBy(x => x.MonAn.TenMon))
+                {
+                    <tr>
+                        <td>@c.MonAn.TenMon</td>
+                        <td class="text-end">@string.Format("{0:N0}", c.DonGia) đ</td>
+                        <td>
+                            @if (Model.DangMo)
+                            {
+                                <div class="d-flex gap-1">
+                                    <form asp-action="DoiSoLuong" asp-route-id="@hd.MaHD" method="post" class="d-flex gap-1">
+                                        <input type="hidden" name="maMon" value="@c.MaMon" />
+                                        <input type="number" name="soLuong" value="@c.SoLuong" min="1" max="99"
+                                               class="form-control form-control-sm" style="width:80px" />
+                                        <button type="submit" class="btn btn-sm btn-outline-secondary">Cập nhật</button>
+                                    </form>
+                                    @* Nút Xóa là form riêng gửi số lượng 0, tránh trùng tên với ô nhập số lượng ở trên *@
+                                    <form asp-action="DoiSoLuong" asp-route-id="@hd.MaHD" method="post">
+                                        <input type="hidden" name="maMon" value="@c.MaMon" />
+                                        <input type="hidden" name="soLuong" value="0" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Xóa</button>
+                                    </form>
+                                </div>
+                            }
+                            else
+                            {
+                                @c.SoLuong
+                            }
+                        </td>
+                        <td class="text-end">@string.Format("{0:N0}", c.SoLuong * c.DonGia) đ</td>
+                    </tr>
+                }
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="3" class="text-end fw-bold">Tổng tiền</td>
+                    <td class="text-end fw-bold price-tag">@string.Format("{0:N0}", hd.TongTien) đ</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+}
+
+@if (Model.DangMo)
+{
+    <form asp-action="ThemMon" asp-route-id="@hd.MaHD" method="post" class="row g-2 align-items-end mb-4">
+        <div class="col-md-6">
+            <label class="form-label mb-0" for="maMon">Gọi thêm món</label>
+            <select id="maMon" name="maMon" class="form-select">
+                @foreach (var m in Model.MonAnList)
+                {
+                    <option value="@m.MaMon">@m.TenMon - @string.Format("{0:N0}", m.Gia) đ</option>
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0" for="soLuongThem">Số lượng</label>
+            <input type="number" id="soLuongThem" name="soLuong" value="1" min="1" max="99" class="form-control" style="width:90px" />
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-restaurant">+ Thêm món</button>
+        </div>
+    </form>
+}
+
+<h5 class="section-title mb-3">Thanh toán</h5>
+
+@if (Model.ThanhToans.Any(t => t.TrangThai == test.Models.TrangThaiThanhToan.ChoXacNhan))
+{
+    <div class="alert alert-warning">
+        Khách báo <strong>đã chuyển khoản</strong>. Hãy kiểm tra tiền đã về tài khoản chưa
+        (nội dung chuyển khoản: <strong>HD@(hd.MaHD)</strong>) rồi bấm <strong>Xác nhận</strong> hoặc <strong>Từ chối</strong> ở bảng bên dưới.
+    </div>
+}
+
+@if (Model.ThanhToans.Any())
+{
+    <div class="table-responsive">
+        <table class="table align-middle bg-white">
+            <thead>
+                <tr>
+                    <th>Thời gian</th>
+                    <th>Hình thức</th>
+                    <th class="text-end">Số tiền</th>
+                    <th>Trạng thái</th>
+                    <th class="text-end">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Model.ThanhToans)
+                {
+                    <tr>
+                        <td>@t.NgayTT.ToString("HH:mm dd/MM/yyyy")</td>
+                        <td>@t.PhuongThuc</td>
+                        <td class="text-end">@string.Format("{0:N0}", t.SoTien) đ</td>
+                        <td>@t.TrangThai</td>
+                        <td class="text-end">
+                            @if (Model.DangMo && t.TrangThai == test.Models.TrangThaiThanhToan.ChoXacNhan)
+                            {
+                                <div class="d-inline-flex gap-1">
+                                    <form asp-action="XacNhanChuyenKhoan" asp-route-id="@hd.MaHD" method="post"
+                                          onsubmit="return confirm('Xác nhận đã nhận @((long)t.SoTien) đ vào tài khoản?');">
+                                        <input type="hidden" name="maTT" value="@t.MaTT" />
+                                        <button type="submit" class="btn btn-sm btn-success">Xác nhận đã nhận</button>
+                                    </form>
+                                    <form asp-action="TuChoiChuyenKhoan" asp-route-id="@hd.MaHD" method="post">
+                                        <input type="hidden" name="maTT" value="@t.MaTT" />
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Từ chối</button>
+                                    </form>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <p class="text-muted">Chưa có lần thanh toán nào.</p>
+}
+
+<p>
+    Đã trả: <strong>@string.Format("{0:N0}", Model.DaTra) đ</strong>
+    · Còn lại: <strong class="price-tag">@string.Format("{0:N0}", Model.ConLai) đ</strong>
+</p>
+
+@if (Model.DangMo && hd.TongTien > 0)
+{
+    <form asp-action="ThemThanhToan" asp-route-id="@hd.MaHD" method="post" class="row g-2 align-items-end mb-3">
+        <div class="col-auto">
+            <label class="form-label mb-0" for="soTien">Số tiền khách trả (đ)</label>
+            <input type="number" id="soTien" name="soTien" value="@conLaiNguyen" min="1" max="@conLaiNguyen"
+                   step="1" class="form-control" />
+        </div>
+        <div class="col-auto">
+            <label class="form-label mb-0" for="phuongThuc">Hình thức</label>
+            <select id="phuongThuc" name="phuongThuc" class="form-select">
+                @foreach (var pt in test.Models.PhuongThucThanhToan.TatCa)
+                {
+                    <option value="@pt">@(pt == test.Models.PhuongThucThanhToan.ChuyenKhoan ? "Chuyển khoản (quét mã QR)" : pt)</option>
+                }
+            </select>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-restaurant">Ghi nhận thanh toán</button>
+        </div>
+    </form>
+
+    @* Khung mã QR: chỉ hiện khi chọn "Chuyển khoản" *@
+    <div id="khungQR" class="card card-food p-3 mb-3" style="max-width: 420px; display: none;">
+        @if (daCauHinhQR)
+        {
+            <h6 class="mb-2">Khách quét mã để chuyển khoản</h6>
+            <img id="anhQR" alt="Mã QR chuyển khoản" class="img-fluid mb-2" />
+            <div class="small text-muted">
+                Chủ tài khoản: <strong>@tenChuTK</strong><br />
+                Số tài khoản: <strong>@soTaiKhoan</strong><br />
+                Nội dung: <strong id="noiDungCK">HD@(hd.MaHD)</strong>
+            </div>
+            <p class="small mb-0 mt-2">Khi thấy tiền về tài khoản, bấm <strong>Ghi nhận thanh toán</strong>.</p>
+        }
+        else
+        {
+            <div class="alert alert-warning mb-0">
+                Chưa khai báo tài khoản ngân hàng nên chưa tạo được mã QR.
+                Hãy điền mục <code>ThanhToanQR</code> trong <code>appsettings.json</code>.
+            </div>
+        }
+    </div>
+}
+
+<div class="d-flex gap-2 mt-4">
+    <a asp-action="Index" class="btn btn-outline-secondary">← Danh sách hóa đơn</a>
+    @if (Model.DangMo && Model.DaTra == 0)
+    {
+        <form asp-action="Huy" asp-route-id="@hd.MaHD" method="post"
+              onsubmit="return confirm('Hủy hóa đơn này?');">
+            <button type="submit" class="btn btn-outline-danger">Hủy hóa đơn</button>
+        </form>
+    }
+</div>
+
+@section Scripts {
+    @if (Model.DangMo && hd.TongTien > 0)
+    {
+        <script>
+            (function () {
+                var chon = document.getElementById('phuongThuc');
+                var soTien = document.getElementById('soTien');
+                var khung = document.getElementById('khungQR');
+                var anh = document.getElementById('anhQR');
+                if (!chon || !soTien || !khung) return;
+
+                var hinhThucCK = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(test.Models.PhuongThucThanhToan.ChuyenKhoan));
+                var maNH = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(maNganHang));
+                var stk = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(soTaiKhoan));
+                var ten = @Html.Raw(System.Text.Json.JsonSerializer.Serialize(tenChuTK));
+                var noiDung = 'HD@(hd.MaHD)';
+
+                function capNhat() {
+                    var laCK = chon.value === hinhThucCK;
+                    khung.style.display = laCK ? 'block' : 'none';
+                    if (!laCK || !anh) return;
+                    var tien = Math.floor(Number(soTien.value)) || 0;
+                    // VietQR: ảnh mã QR đã nhúng sẵn số tiền và nội dung chuyển khoản
+                    anh.src = 'https://img.vietqr.io/image/' + encodeURIComponent(maNH) + '-' + encodeURIComponent(stk) + '-compact2.png'
+                        + '?amount=' + tien
+                        + '&addInfo=' + encodeURIComponent(noiDung)
+                        + '&accountName=' + encodeURIComponent(ten);
+                }
+
+                chon.addEventListener('change', capNhat);
+                soTien.addEventListener('input', capNhat);
+                capNhat();
+            })();
+        </script>
+    }
+}

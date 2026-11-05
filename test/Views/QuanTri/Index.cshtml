@@ -1,0 +1,329 @@
+@model test.Models.TrangQuanTriViewModel
+@using System.Globalization
+@using System.Text
+@{
+    var laQuanLy = User.IsInRole("QuanLy");
+    ViewData["Title"] = laQuanLy ? "Bảng điều khiển quản lý" : "Trang chủ nhân viên";
+
+    var vi = new CultureInfo("vi-VN");
+    var inv = CultureInfo.InvariantCulture;
+    string Vnd(decimal v) => v.ToString("N0", vi) + "đ";
+    string F(double v) => v.ToString("0.##", inv);   // số trong SVG luôn dùng dấu chấm
+
+    // Làm tròn trần "đẹp" cho trục tung: 1, 2, 5 x 10^n
+    double TranDep(double max, double toiThieu)
+    {
+        if (max < toiThieu) return toiThieu;
+        var bac = Math.Pow(10, Math.Floor(Math.Log10(max)));
+        var n = max / bac;
+        var dep = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+        return dep * bac;
+    }
+    string Rut(double v) => v >= 1_000_000 ? (v / 1_000_000).ToString("0.#", inv) + "tr" : v >= 1000 ? (v / 1000).ToString("0", inv) + "k" : v.ToString("0", inv);
+
+    // ===== Biểu đồ cột: doanh thu hôm nay theo giờ (chỉ quản lý) =====
+    var svgCot = "";
+    var svgMien = "";
+    if (laQuanLy)
+    {
+        const double W = 480, H = 220, trai = 46, phai = 8, tren = 10, duoi = 28;
+        var rong = W - trai - phai; var cao = H - tren - duoi;
+
+        var giaTri = Model.DoanhThuTheoGio.Select(x => (double)x).ToArray();
+        var tran = TranDep(giaTri.Max(), 1_000_000);
+        var sb = new StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {F(W)} {F(H)}\" class=\"qt-chart\" role=\"img\" aria-label=\"Doanh thu theo giờ\">");
+        for (var i = 0; i <= 4; i++)
+        {
+            var y = tren + cao - cao * i / 4.0;
+            sb.Append($"<line x1=\"{F(trai)}\" y1=\"{F(y)}\" x2=\"{F(W - phai)}\" y2=\"{F(y)}\" class=\"qt-grid\"/>");
+            sb.Append($"<text x=\"{F(trai - 6)}\" y=\"{F(y + 3)}\" text-anchor=\"end\" class=\"qt-axis\">{Rut(tran * i / 4.0)}</text>");
+        }
+        var buoc = rong / 24.0; var rongCot = buoc * 0.62;
+        for (var h = 0; h < 24; h++)
+        {
+            var x = trai + buoc * h + (buoc - rongCot) / 2;
+            var d = giaTri[h] / tran * cao;
+            if (d > 0)
+            {
+                sb.Append($"<rect x=\"{F(x)}\" y=\"{F(tren + cao - d)}\" width=\"{F(rongCot)}\" height=\"{F(d)}\" rx=\"2\" class=\"qt-bar\"><title>{h}h: {Vnd((decimal)giaTri[h])}</title></rect>");
+            }
+            if (h % 3 == 0)
+            {
+                sb.Append($"<text x=\"{F(x + rongCot / 2)}\" y=\"{F(H - 8)}\" text-anchor=\"middle\" class=\"qt-axis\">{h}h</text>");
+            }
+        }
+        sb.Append("</svg>");
+        svgCot = sb.ToString();
+
+        // ===== Biểu đồ miền: số phần bán ra 7 ngày =====
+        var diem = Model.SoPhanBan7Ngay;
+        var tran2 = TranDep(diem.Max(p => (double)p.GiaTri), 5);
+        var xs = diem.Select((p, i) => trai + rong * i / (diem.Count - 1.0)).ToArray();
+        var ys = diem.Select(p => tren + cao - (double)p.GiaTri / tran2 * cao).ToArray();
+        var duong = new StringBuilder($"M {F(xs[0])} {F(ys[0])}");
+        for (var i = 1; i < xs.Length; i++)
+        {
+            var gx = (xs[i - 1] + xs[i]) / 2;
+            duong.Append($" C {F(gx)} {F(ys[i - 1])}, {F(gx)} {F(ys[i])}, {F(xs[i])} {F(ys[i])}");
+        }
+        var sb2 = new StringBuilder();
+        sb2.Append($"<svg viewBox=\"0 0 {F(W)} {F(H)}\" class=\"qt-chart\" role=\"img\" aria-label=\"Số phần bán ra 7 ngày\">");
+        for (var i = 0; i <= 4; i++)
+        {
+            var y = tren + cao - cao * i / 4.0;
+            sb2.Append($"<line x1=\"{F(trai)}\" y1=\"{F(y)}\" x2=\"{F(W - phai)}\" y2=\"{F(y)}\" class=\"qt-grid\"/>");
+            sb2.Append($"<text x=\"{F(trai - 6)}\" y=\"{F(y + 3)}\" text-anchor=\"end\" class=\"qt-axis\">{F(tran2 * i / 4.0)}</text>");
+        }
+        sb2.Append($"<path d=\"{duong} L {F(xs[^1])} {F(tren + cao)} L {F(xs[0])} {F(tren + cao)} Z\" class=\"qt-area\"/>");
+        sb2.Append($"<path d=\"{duong}\" class=\"qt-line\"/>");
+        for (var i = 0; i < xs.Length; i++)
+        {
+            sb2.Append($"<circle cx=\"{F(xs[i])}\" cy=\"{F(ys[i])}\" r=\"3\" class=\"qt-dot\"><title>{diem[i].Nhan}: {F((double)diem[i].GiaTri)} phần</title></circle>");
+            sb2.Append($"<text x=\"{F(xs[i])}\" y=\"{F(H - 8)}\" text-anchor=\"middle\" class=\"qt-axis\">{diem[i].Nhan}</text>");
+        }
+        sb2.Append("</svg>");
+        svgMien = sb2.ToString();
+    }
+}
+
+@if (laQuanLy)
+{
+    <div class="qt-page-title">
+        <h2>Bảng điều khiển quản lý</h2>
+        <span class="text-muted">Xin chào, @User.Identity?.Name · @DateTime.Today.ToString("dd/MM/yyyy")</span>
+    </div>
+
+    @if (Model.SoLoCanhBao > 0)
+    {
+        <div class="alert alert-warning py-2">
+            Kho có <strong>@Model.SoLoCanhBao lô</strong> sắp hết hạn hoặc đã hết hạn.
+            <a asp-controller="TonKho" asp-action="Index" asp-route-loc="saphethan">Xem ngay</a>
+        </div>
+    }
+
+    @* ----- 4 ô số liệu ----- *@
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-xl-3">
+            <a asp-controller="ThongKe" asp-action="Index" class="qt-kpi">
+                <span class="qt-kpi-label">Doanh thu hôm nay</span>
+                <span class="qt-kpi-value">@Vnd(Model.ThuHomNay ?? 0)</span>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a asp-controller="QuanLyHoaDon" asp-action="Index" class="qt-kpi">
+                <span class="qt-kpi-label">Tổng số đơn</span>
+                <span class="qt-kpi-value">@Model.SoHoaDonHomNay</span>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a asp-controller="QuanLyBan" asp-action="Index" class="qt-kpi">
+                <span class="qt-kpi-label">Số bàn đang hoạt động</span>
+                <span class="qt-kpi-value">@Model.SoBanDangDung/@Model.SoBanDangHoatDong</span>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a asp-controller="QuanLyNhanVien" asp-action="Index" class="qt-kpi">
+                <span class="qt-kpi-label">Nhân viên đang làm việc</span>
+                <span class="qt-kpi-value">@Model.SoNhanVienDangPhanCong người</span>
+            </a>
+        </div>
+    </div>
+
+    @* ----- 2 biểu đồ ----- *@
+    <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+            <section class="qt-card h-100">
+                <h5 class="qt-card-title">Doanh thu theo ngày/giờ</h5>
+                <div class="text-muted small mb-1">Hôm nay, theo từng giờ</div>
+                @Html.Raw(svgCot)
+            </section>
+        </div>
+        <div class="col-lg-6">
+            <section class="qt-card h-100">
+                <h5 class="qt-card-title">Món ăn bán chạy</h5>
+                <div class="text-muted small mb-1">Số phần bán ra trong 7 ngày gần nhất</div>
+                @Html.Raw(svgMien)
+                @if (Model.TopMon.Any())
+                {
+                    <ol class="qt-top-mon">
+                        @foreach (var m in Model.TopMon)
+                        {
+                            <li><span>@m.Nhan</span><b>@m.GiaTri.ToString("0") phần</b></li>
+                        }
+                    </ol>
+                }
+            </section>
+        </div>
+    </div>
+
+    @* ----- Nhân sự + duyệt yêu cầu ----- *@
+    <div class="row g-3">
+        <div class="col-lg-7">
+            <section class="qt-card h-100">
+                <h5 class="qt-card-title d-flex justify-content-between">
+                    Trạng thái nhân sự
+                    <a asp-controller="QuanLyNhanVien" asp-action="Index" class="qt-more">Xem tất cả</a>
+                </h5>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle qt-table mb-0">
+                        <thead><tr><th>Nhân viên</th><th>Chức vụ</th><th>Công việc</th><th>Trạng thái</th></tr></thead>
+                        <tbody>
+                            @foreach (var n in Model.NhanSu)
+                            {
+                                <tr>
+                                    <td class="fw-semibold">@n.HoTen</td>
+                                    <td>@n.ChucVu</td>
+                                    <td>@n.CongViec</td>
+                                    <td>
+                                        <span class="qt-dot-status @(n.DangPhanCong ? "on" : "off")"></span>
+                                        @(n.DangPhanCong ? "Đang phân công" : "Chưa phân công")
+                                    </td>
+                                </tr>
+                            }
+                            @if (!Model.NhanSu.Any())
+                            {
+                                <tr><td colspan="4" class="text-center text-muted py-3">Chưa có nhân viên.</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+        <div class="col-lg-5">
+            <section class="qt-card h-100">
+                <h5 class="qt-card-title">Duyệt yêu cầu</h5>
+                <table class="table table-sm align-middle qt-table mb-0">
+                    <thead><tr><th>Duyệt yêu cầu</th><th class="text-end">Duyệt</th></tr></thead>
+                    <tbody>
+                        <tr>
+                            <td>Đặt bàn chờ xác nhận <span class="badge qt-badge">@Model.SoDatBanChoXacNhan</span></td>
+                            <td class="text-end"><a class="qt-duyet" asp-controller="QuanLyDatBan" asp-action="Index">Duyệt đặt bàn</a></td>
+                        </tr>
+                        <tr>
+                            <td>Chuyển khoản chờ đối soát <span class="badge qt-badge">@Model.SoChuyenKhoanChoXacNhan</span></td>
+                            <td class="text-end"><a class="qt-duyet" asp-controller="QuanLyHoaDon" asp-action="Index">Duyệt thanh toán</a></td>
+                        </tr>
+                        <tr>
+                            <td>Hóa đơn chưa thanh toán <span class="badge qt-badge">@Model.SoHoaDonChuaThanhToan</span></td>
+                            <td class="text-end"><a class="qt-duyet" asp-controller="QuanLyHoaDon" asp-action="Index" asp-route-trangThai="@test.Models.TrangThaiHoaDon.ChuaThanhToan">Xem hóa đơn</a></td>
+                        </tr>
+                        <tr>
+                            <td>Lô kho cần chú ý <span class="badge qt-badge">@Model.SoLoCanhBao</span></td>
+                            <td class="text-end"><a class="qt-duyet" asp-controller="TonKho" asp-action="Index" asp-route-loc="saphethan">Kiểm tra kho</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </div>
+}
+else
+{
+    var homNay = DateTime.Today;
+    var dauThang = new DateTime(homNay.Year, homNay.Month, 1);
+    var soNgayThang = DateTime.DaysInMonth(homNay.Year, homNay.Month);
+    var lech = ((int)dauThang.DayOfWeek + 6) % 7;   // thứ Hai = cột đầu tiên
+
+    <div class="row g-3">
+        @* ----- Cột trái: đơn hàng đang xử lý ----- *@
+        <div class="col-xl-8">
+            <section class="qt-card">
+                <h5 class="qt-card-title d-flex justify-content-between">
+                    Đơn hàng đang xử lý
+                    <a asp-controller="QuanLyHoaDon" asp-action="Index" class="qt-more">Xem tất cả (@Model.SoHoaDonChuaThanhToan)</a>
+                </h5>
+
+                @if (!Model.DonDangXuLy.Any())
+                {
+                    <p class="text-muted text-center py-4 mb-0">Hiện chưa có đơn nào đang xử lý.</p>
+                }
+                @foreach (var don in Model.DonDangXuLy)
+                {
+                    <article class="qt-don">
+                        <header class="qt-don-head">
+                            <strong>Bàn @don.SoBan</strong>
+                            <span class="qt-chip">#@don.MaHD</span>
+                            <span class="qt-don-time">@don.NgayLap.ToString("HH:mm dd/MM")</span>
+                        </header>
+                        <div class="qt-don-body">
+                            <ul class="qt-don-mon">
+                                @foreach (var m in don.Mon)
+                                {
+                                    <li><span>@m.TenMon</span><span class="text-muted">&times;@m.SoLuong</span></li>
+                                }
+                                @if (!don.Mon.Any())
+                                {
+                                    <li class="text-muted">Chưa gọi món.</li>
+                                }
+                            </ul>
+                            <div class="qt-don-trangthai">
+                                <span class="small text-muted">Trạng thái</span>
+                                <span class="qt-pill @(don.CoChoXacNhan ? "qt-pill-info" : "qt-pill-warn")">@(don.CoChoXacNhan ? "Chờ xác nhận CK" : "Chưa thanh toán")</span>
+                                <a class="qt-btn qt-btn-green" asp-controller="QuanLyHoaDon" asp-action="Details" asp-route-id="@don.MaHD">Chi tiết</a>
+                                <a class="qt-btn qt-btn-red" asp-controller="QuanLyHoaDon" asp-action="Details" asp-route-id="@don.MaHD">Thanh toán</a>
+                            </div>
+                        </div>
+                        <footer class="qt-don-total"><span>Tổng tiền</span><b>@Vnd(don.TongTien)</b></footer>
+                    </article>
+                }
+            </section>
+        </div>
+
+        @* ----- Cột phải: yêu cầu, check-in/out, lịch ----- *@
+        <div class="col-xl-4">
+            <section class="qt-card mb-3">
+                <h5 class="qt-card-title">Yêu cầu cần xử lý</h5>
+                @if (!Model.DatBanChoXacNhan.Any())
+                {
+                    <p class="text-muted small mb-0">Không có lịch đặt bàn nào chờ xác nhận.</p>
+                }
+                @foreach (var d in Model.DatBanChoXacNhan)
+                {
+                    <a asp-controller="QuanLyDatBan" asp-action="Index" class="qt-yeucau">
+                        <span><strong>Bàn @d.SoBan</strong> · @d.TenKhach (@d.SoNguoi người)</span>
+                        <span class="text-muted small">@d.NgayGio.ToString("HH:mm dd/MM")</span>
+                    </a>
+                }
+            </section>
+
+            <section class="qt-card mb-3">
+                <h5 class="qt-card-title">Check-in / Check-out</h5>
+                <div class="qt-checkin">
+                    <button type="button" class="qt-checkin-btn" disabled title="Chưa có bảng chấm công trong database">
+                        <span class="qt-checkin-icon">📥</span>Check-in
+                    </button>
+                    <button type="button" class="qt-checkin-btn" disabled title="Chưa có bảng chấm công trong database">
+                        <span class="qt-checkin-icon">📤</span>Check-out
+                    </button>
+                </div>
+            </section>
+
+            <section class="qt-card" id="lich-lam-viec">
+                <h5 class="qt-card-title">Lịch làm việc <small class="text-muted fw-normal">· Tháng @homNay.Month/@homNay.Year</small></h5>
+                <table class="qt-cal">
+                    <thead><tr><th>T2</th><th>T3</th><th>T4</th><th>T5</th><th>T6</th><th>T7</th><th>CN</th></tr></thead>
+                    <tbody>
+                        @for (var tuan = 0; tuan * 7 - lech < soNgayThang; tuan++)
+                        {
+                            <tr>
+                                @for (var cot = 0; cot < 7; cot++)
+                                {
+                                    var ngay = tuan * 7 + cot - lech + 1;
+                                    if (ngay < 1 || ngay > soNgayThang)
+                                    {
+                                        <td></td>
+                                    }
+                                    else
+                                    {
+                                        <td class="@(ngay == homNay.Day ? "hom-nay" : "")">@ngay</td>
+                                    }
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </section>
+        </div>
+    </div>
+}

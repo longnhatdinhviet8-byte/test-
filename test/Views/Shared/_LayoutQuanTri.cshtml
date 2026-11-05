@@ -1,0 +1,89 @@
+@{
+    // Khung lồng trong _Layout: giữ thanh menu trên cùng, thêm menu dọc bên trái như thiết kế
+    Layout = "~/Pages/Shared/_Layout.cshtml";
+    ViewData["ToanMan"] = true;
+
+    var laQuanLy = User.IsInRole("QuanLy");
+    var ctl = ViewContext.RouteData.Values["controller"] as string ?? "";
+    var act = ViewContext.RouteData.Values["action"] as string ?? "";
+
+    // Một mục có action riêng (vd: QR, Tạo) chỉ sáng khi đúng action đó; mục còn lại sáng ở mọi action của controller
+    bool DangMo(string c, string a = "")
+    {
+        if (!string.Equals(ctl, c, StringComparison.OrdinalIgnoreCase)) return false;
+        if (a != "") return string.Equals(act, a, StringComparison.OrdinalIgnoreCase);
+        if (c == "QuanLyBan") return !string.Equals(act, "QR", StringComparison.OrdinalIgnoreCase);
+        if (c == "QuanLyHoaDon" && !laQuanLy) return !string.Equals(act, "Tao", StringComparison.OrdinalIgnoreCase);
+        return true;
+    }
+
+    // (biểu tượng, tên, controller, action, anchor, nhóm "phụ" hiện sau đường kẻ)
+    var mucNhanVien = new (string Icon, string Ten, string Controller, string Action, string Anchor, bool Phu)[]
+    {
+        ("🏠", "Trang chủ", "QuanTri", "Index", "", false),
+        ("🧾", "Xem Đơn hàng", "QuanLyHoaDon", "Index", "", false),
+        ("📱", "Gọi món tại bàn", "QuanLyHoaDon", "Tao", "", false),
+        ("📅", "Danh sách Đặt bàn", "QuanLyDatBan", "Index", "", false),
+        ("📦", "Yêu cầu Tiếp tế", "TonKho", "Index", "", false),
+        ("🗓️", "Lịch làm việc", "QuanTri", "Index", "lich-lam-viec", false),
+        ("💬", "Hỗ trợ", "Home", "Contact", "", false),
+        ("🪑", "Sơ đồ bàn", "QuanLyBan", "Index", "", true),
+        ("🔲", "QR gọi món tại bàn", "QuanLyBan", "QR", "", true),
+        ("📥", "Nhập kho", "NhapKho", "Index", "", true)
+    };
+
+    var mucQuanLy = new (string Icon, string Ten, string Controller, string Action, string Anchor, bool Phu)[]
+    {
+        ("🏠", "Bảng điều khiển", "QuanTri", "Index", "", false),
+        ("🧾", "Quản lý hóa đơn", "QuanLyHoaDon", "Index", "", false),
+        ("📅", "Quản lý đặt bàn", "QuanLyDatBan", "Index", "", false),
+        ("🪑", "Quản lý bàn", "QuanLyBan", "Index", "", false),
+        ("📱", "QR gọi món tại bàn", "QuanLyBan", "QR", "", false),
+        ("📦", "Tồn kho", "TonKho", "Index", "", false),
+        ("📥", "Nhập kho", "NhapKho", "Index", "", false),
+        ("⚙️", "Quản lý thực đơn", "QuanLyThucDon", "Index", "", false),
+        ("👥", "Quản lý nhân viên", "QuanLyNhanVien", "Index", "", false),
+        ("🏬", "Quản lý kho", "QuanLyKho", "Index", "", false),
+        ("🥬", "Nguyên liệu", "QuanLyNguyenLieu", "Index", "", false),
+        ("🍲", "Công thức món", "QuanLyCongThuc", "Index", "", false),
+        ("🗂️", "Danh mục món", "QuanLyDanhMuc", "Index", "", true),
+        ("📋", "Công việc", "QuanLyCongViec", "Index", "", true),
+        ("🧑‍🤝‍🧑", "Khách hàng", "QuanLyKhachHang", "Index", "", true),
+        ("📊", "Thống kê", "ThongKe", "Index", "", true)
+    };
+
+    var muc = laQuanLy ? mucQuanLy : mucNhanVien;
+    var daVeDuongKe = false;
+
+    // Mục "Trang chủ" có anchor thì không tính là đang mở khi đang ở đúng trang chủ
+    bool Sang((string Icon, string Ten, string Controller, string Action, string Anchor, bool Phu) m)
+        => m.Anchor == "" && DangMo(m.Controller, (m.Controller == "QuanLyBan" && m.Action == "QR") || (m.Controller == "QuanLyHoaDon" && m.Action == "Tao") ? m.Action : "");
+}
+
+<div class="qt-shell">
+    <aside class="qt-sidebar @(laQuanLy ? "qt-sidebar-light" : "qt-sidebar-dark")">
+        <nav class="qt-menu" aria-label="Menu quản trị">
+            @foreach (var m in muc)
+            {
+                if (m.Phu && !daVeDuongKe)
+                {
+                    daVeDuongKe = true;
+                    <div class="qt-menu-divider" role="separator"></div>
+                }
+                <a class="qt-menu-item @(Sang(m) ? "active" : "")"
+                   href="@(Url.Action(m.Action, m.Controller) + (m.Anchor != "" ? "#" + m.Anchor : ""))">
+                    <span class="qt-menu-icon">@m.Icon</span>
+                    <span class="qt-menu-text">@m.Ten</span>
+                </a>
+            }
+        </nav>
+    </aside>
+
+    <section class="qt-main">
+        @RenderBody()
+    </section>
+</div>
+
+@section Scripts {
+    @await RenderSectionAsync("Scripts", required: false)
+}
